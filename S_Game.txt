@@ -1,0 +1,473 @@
+[org 0x100]
+mov ax,0
+mov es,ax
+cli
+mov word[es:36],HookInt9        ;Hooking Int9
+mov word[es:38],cs
+sti
+mov ax,0xB800
+mov es,ax
+
+Call ClearScreen                ;Will Clear Screen
+Call FillBoundaries              ;Will Make Boundaries
+Call FillingPlayingRegion  
+Call GeneratingRandomNumber
+
+mov ax,0
+mov bx,0
+mov cx,0
+mov dx,0
+mov si,0
+mov di,0
+
+Movement:
+push ax
+push dx
+mov ah,0x70
+mov al,0x2
+mov di,[GeneratedNumber]
+mov word[es:di],ax
+
+mov ah,00h
+int 1Ah
+mov ax,[RandomNo]
+add ax,dx
+add [RandomNo],ax
+
+mov  bl,[Direction]             ;Check in whick Direction I have to move...0 to right,1 to down, 2 to left, 3 to Up
+cmp bl,0 
+je LToR
+cmp bl,1 
+je UToD
+cmp bl,2 
+je RToL
+cmp bl,3 
+je DToU
+
+LToR:
+mov bx,4
+push bx
+Call ChangeDirection
+jmp MovementDone
+
+UToD:
+mov bx,160
+push bx
+Call ChangeDirection
+jmp MovementDone
+
+DToU:
+mov bx,-160
+push bx
+Call ChangeDirection
+jmp MovementDone
+
+RToL:
+mov bx,-4
+push bx
+Call ChangeDirection
+jmp MovementDone
+
+MovementDone:
+mov bx,[SnakeSpeed]
+push bx
+Call Delay
+
+jmp Movement	
+	
+GameOver:
+call ClearScreen
+mov ax,0x4c00
+int 21h
+Direction : db 0
+Snake : dw 250,246,242
+ExtraSpace : times 100 dw 168
+SnakeSize : dw 3
+Boundaries  : times 252 dw 0
+BoundarySize : dw 252 
+PlayingRegion : times 1748 dw 0
+PlayingRegionSize : dw 1748
+GeneratedNumber : dd 0x0ED80ED8
+SnakeSpeed : dw 9
+Score : dw 0
+RandomNo : dw 0
+                                                     ;......................SUBROUTINES
+													 
+HookInt9:         ;Hooked Subroutine (int 9)
+push di
+push ax
+
+In al,0x60
+cmp al,0x50
+je TurnDown
+cmp al,0x4B
+je TurnLeft
+cmp al,0x4D
+je TurnRight
+cmp al,0x48
+je TurnUp
+jmp TurningDone
+
+TurnDown:
+mov al,[Direction]
+cmp al,3
+je TurningDone
+mov al,1
+mov [Direction],al
+jmp TurningDone
+
+TurnLeft:
+mov al,[Direction]
+cmp al,0
+je TurningDone
+mov al,2
+mov [Direction],al
+jmp TurningDone
+
+TurnRight:
+mov al,[Direction]
+cmp al,2
+je TurningDone
+mov al,0
+mov [Direction],al
+jmp TurningDone
+
+TurnUp:
+mov al,[Direction]
+cmp al,1
+je TurningDone
+mov al,3
+mov [Direction],al
+jmp TurningDone
+
+TurningDone:
+mov al,0x20
+out 0x20,al
+pop ax
+pop di
+iret
+
+                                                             ;...........................
+
+ClearSnake:         ;will clear previous Snake (Subroutine)
+pusha
+mov cx,[SnakeSize]
+mov si,0
+mov ah,0x77
+mov al,0x20
+Clearing:
+mov di,[Snake+si]
+mov word[es:di],ax
+add si,2
+loop Clearing
+popa
+ret
+
+                                                              ;............................
+															  
+ChangeDirection: ; To Change Direction of Snake Subroutine (1 Parameter for Direction)
+mov bp,sp
+push dx
+push si
+push cx
+push bx
+mov cx,[SnakeSize]
+dec cx
+mov si,[SnakeSize]
+add si,si
+sub si,4
+Call ClearSnake
+Balancing:
+mov di,[Snake+si]
+mov[Snake+si+2],di
+sub si,2
+loop Balancing
+mov di,[Snake]
+add di,[bp+2]
+mov [Snake],di
+Call GameLoseOrNot                          ;Check Is Boundary Touch or Not
+mov si,0
+mov cx,[SnakeSize]
+cmp di,[GeneratedNumber]
+jne SkipFirst
+call UpDate
+jmp Moving
+SkipFirst:
+cmp di,[GeneratedNumber+2]
+jne Moving
+Call UpDate
+Moving:
+mov dh,0x74
+mov dl,0xDC
+mov di,[Snake+si]
+mov word[es:di],dx
+add si,2
+loop Moving
+pop bx
+pop cx
+pop si
+pop dx
+ret 2
+
+                                                            ;.................................
+															
+
+Delay:         ;Time Delay Subroutine (1 Parameter to Control Delay)
+mov bp,sp
+push Cx
+push si
+mov si,[bp+2]
+Wasting:
+mov Cx,0xFFFF
+TimeWasting:
+loop TimeWasting
+dec si
+cmp si,0
+jne Wasting
+pop si
+pop Cx
+ret 2
+
+                                                             ;...........................................
+															 
+ClearScreen :    ; Subroutine to Clear the Screen
+mov di,0
+mov al,0x20
+mov ah,0x70
+mov cx,4000
+rep stosw	
+ret
+                                                              ;...........................................	
+
+
+FillBoundaries : ;This Subroutine will fill the Array of Boundaries with Indices of Losing Condition (In this Case outer wall)
+mov si,0
+mov di,0
+mov bx,0
+mov cx,80
+mov dh,0x70
+mov dl,0xB2
+mov ax,1
+Fill1:
+mov [Boundaries+si],bx
+push ax
+Call Delay
+mov word[es:bx],dx
+add si,2
+add bx,2
+loop Fill1
+mov bx,158
+mov cx,23
+Fill2:
+add bx,160
+mov [Boundaries+si],bx
+push ax
+Call Delay
+mov word[es:bx],dx
+add si,2
+loop Fill2
+mov bx,156
+mov cx,23
+Fill2b:
+add bx,160
+mov [Boundaries+si],bx
+push ax
+Call Delay
+mov word[es:bx],dx
+add si,2
+loop Fill2b
+mov cx,23
+mov bx,160
+Fill3:
+mov [Boundaries+si],bx
+push ax
+Call Delay
+mov word[es:bx],dx
+add si,2
+add bx,160
+loop Fill3	
+mov cx,80
+Fill4:
+mov [Boundaries+si],bx
+push ax
+Call Delay
+mov word[es:bx],dx
+add si,2
+add bx,2
+loop Fill4
+mov cx,23
+mov bx,162
+Fill3a:
+mov [Boundaries+si],bx
+push ax
+Call Delay
+mov word[es:bx],dx
+add si,2
+add bx,160
+loop Fill3a
+ret
+
+                                                                  ;.....................................................
+FillingPlayingRegion :          ;Will fill Playing Region
+pusha
+mov dx,164
+mov si,0
+mov cx,1748
+L1F:
+push cx
+mov cx,168
+mov di,164
+L2F:
+cmp dx,[Boundaries+di]
+je skipF
+add di,2
+loop L2F
+mov [PlayingRegion+si],dx
+add dx,2
+add si,2
+pop cx
+loop L1F
+jmp endF
+skipF:
+add dx,2
+pop cx
+jmp L1F
+endF :
+mov word[PlayingRegion+152],3832
+mov word[PlayingRegion+306],3834
+popa
+ret															  
+																  
+																  ;.....................................................
+
+GameLoseOrNot:                          ;Check whether Lose or Not
+push si
+push cx
+mov cx,[BoundarySize]
+mov si,0
+Checking:
+cmp di,[Boundaries+si]
+je GameOver
+add si,2
+loop Checking
+mov si,2
+mov cx,[SnakeSize]
+CheckingOwn:
+cmp di,[Snake+si]
+je GameOver
+add si,2
+loop CheckingOwn
+pop cx
+pop si
+ret				
+                                                        ;..................................................
+
+GeneratingRandomNumber:                  ;Making a Random Number
+pusha
+mov al,0x20
+mov ah,0x77
+mov di,[GeneratedNumber]
+mov word[es:di],ax
+mov di,[GeneratedNumber+2]
+mov word[es:di],ax
+mov bx,156                        ;if line will erase (right)
+mov cx,23
+mov dx,0x70B2
+Fill2bG:
+add bx,160
+mov word[es:bx],dx
+add si,2
+loop Fill2bG
+Here:
+mov ah,00h
+int 1Ah
+mov ax,dx
+add ax,[RandomNo]
+mov dx,0
+mov bx,3490
+div bx
+mov di,dx
+mov ax,dx
+mov dx,0
+mov bx,2
+div bx
+cmp dx,0
+je skipG
+add di,1
+skipG:
+
+mov si,2
+mov cx,[SnakeSize]
+CheckingOwn2:
+cmp di,[Snake+si]
+je Here
+add si,2
+loop CheckingOwn2
+
+mov di,[PlayingRegion+di]
+mov [GeneratedNumber],di
+add di,2
+mov [GeneratedNumber+2],di
+popa
+ret	  
+                                                         ;.............................................
+
+UpDate:                               ;Updating Snake
+push ax
+mov ax,[SnakeSize]
+inc ax
+mov [SnakeSize],ax
+pop ax
+call GeneratingRandomNumber                ;Gen Random Number
+call ManageSnakeSpeed                     ;will increase speed
+call PrintScore                   ;Increase Score
+ret
+                                                         ;...............................................
+														
+ManageSnakeSpeed:         ;Update Snake Speed (At Mod 3)
+pusha
+mov ax,[SnakeSize]
+mov bl,3
+div bl
+cmp ah,0
+jne NoNeed
+mov ax,[SnakeSpeed]
+cmp ax,2
+je NoNeed
+dec ax
+mov [SnakeSpeed],ax
+NoNeed:
+popa
+ret
+
+
+PrintScore :                               ;Update Score
+pusha
+mov ax,[Score]
+inc ax
+mov [Score],ax
+mov ah,0x4F
+mov al,'S'
+mov word[es:0],ax
+mov al,'C'
+mov word[es:2],ax
+mov al,'O'
+mov word[es:4],ax
+mov al,'R'
+mov word[es:6],ax
+mov al,'E'
+mov word[es:8],ax
+mov al,':'
+mov word[es:10],ax
+mov ax,[Score]
+mov bl,10
+div bl
+mov dh,0x4F
+mov dl,ah
+add dl,0x30
+mov ah,0x4F
+add al,0x30
+mov word[es:12],ax
+mov word[es:14],dx
+popa
+ret
